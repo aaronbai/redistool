@@ -1,0 +1,15 @@
+{
+  "name": "redes-demo",
+  "version": "1.0.0",
+  "description": "init proj-demo with nodejs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "aaronbai",
+  "license": "MIT",
+  "dependencies": {
+      "ioredis": "2.2.0",
+      "yargs": "4.7.1"
+  }
+}
