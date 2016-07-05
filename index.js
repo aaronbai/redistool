@@ -3,6 +3,7 @@ var Redis = require('ioredis');
 var argv = require('yargs')
     .usage('Usage: $0 -h [host] -p [port] -a [password] -t [type]')
     .example('$0 -h 127.0.0.1 -p 6379 -t zset')
+    .example('$0 -h 127.0.0.1 -p 6379 -s')
     .alias('t', 'type')
     .describe('t', 'type in redis, like set|zset|string and etc')
     .alias('s', 'summery')
@@ -82,11 +83,11 @@ function typeNumberDist() {
              'return numbers;'
     });
 
-    redis.keyTypeDistri().then(function(result){
-        console.log(result);
-        return result;
-    }, function(err){
-        console.log("[err]: " + err);
+    return new Promise(function(resolve, reject) {
+            redis.keyTypeDistri().then(function(result){
+                console.log(result);
+                resolve(result);
+        });
     });
 }
 
@@ -124,6 +125,7 @@ if (argv.s) {
     var keyTables = {};
     //var keyNumbers = typeNumberDist();
     var memoTotal = 0;
+    var numberTotal = 0;
     for (var index in types) {
         var type = types[index];
         promises.push(findKeyListWithType(type).then(function(result){
@@ -153,13 +155,22 @@ if (argv.s) {
             }));
         }
 
+        promises.push(typeNumberDist().then(function (result){
+            for (var index in result) {
+                resumm[types[index]]["keysnumber"] = result[index];
+                numberTotal += result[index];
+            }
+        }));
+
         Promise.all(promises).then(function () {
             resumm["memoTotal"] = memoTotal;
+            resumm["keyNumberTotal"] = numberTotal;
             for (var index in types) {
                 var type = types[index];
-                console.log(type + ":" + resumm[type]);
                 var percentage = resumm[type]["memo"] / memoTotal;
                 resumm[type]["mmPercent"] = percentage; 
+                percentage = resumm[type]["keysnumber"] / numberTotal;
+                resumm[type]["nmPercent"] = percentage;
             }
             redis.quit();
             console.log(resumm);
