@@ -6,31 +6,29 @@ var argv = require('yargs')
     .example('$0 -h 127.0.0.1 -p 6379 -s')
     .alias('t', 'type')
     .describe('t', 'type in redis, like set|zset|string and etc')
-    .alias('s', 'summery')
-    .describe('s', 'summery of keys number')
+    .alias('s', 'summary')
+    .describe('s', 'summ of different type distribution')
     .alias('h', 'host')
     .describe('h', 'redis-server ip')
+    .default('127.0.0.1')
     .alias('p', 'port')
     .describe('p', 'redis-server port')
+    .default(6379)
     .alias('a', 'auth')
     .describe('a', 'redis-server password')
     .alias('d', 'dbnum')
     .describe('d', 'redis-server dbnumber')
-    .demand(['h', 'p'])
+    .default(0)
     .argv;
 
-var options = {
-    'port': 6379,
-    'host': '127.0.0.1',
-    'password': 'Admin@123',
-    'db': 0
-};
+var options = {};
 if (argv.h) options.host = argv.h;
 if (argv.p) options.port = argv.p;
 if (argv.a) options.password = argv.a;
 if (argv.d) options.db = argv.d;
 
 var redis = new Redis(options);
+var types = ["set", "zset", "list", "hash", "string"];
 
 /*
  * @desc: get a list of keys with specific type
@@ -85,7 +83,6 @@ function typeNumberDist() {
 
     return new Promise(function(resolve, reject) {
             redis.keyTypeDistri().then(function(result){
-                console.log(result);
                 resolve(result);
         });
     });
@@ -112,18 +109,17 @@ function typeMemoDist(type, keys) {
     });
 }
 
-if (argv.t) {
-    findKeyListWithType(argv.t).then(function(result){
-        console.log(result);
-    });
+function printAttention() {
+    console.log("Attention: ");
+    console.log("The memo in result is NOT the memory used. It's based on 'DEBUG OBJECT' result's serializedlength which means length in rdb file");
 }
 
-if (argv.s) {
+function summary() {
+    printAttention();
+
     var resumm = {};
     var promises = [];
-    var types = ["set", "zset", "list", "hash", "string"];
     var keyTables = {};
-    //var keyNumbers = typeNumberDist();
     var memoTotal = 0;
     var numberTotal = 0;
     for (var index in types) {
@@ -133,7 +129,6 @@ if (argv.s) {
             keyTables[keytype] = result["keyList"];
         }));
     }
-
 
     /*
      * var a ='db';
@@ -149,7 +144,6 @@ if (argv.s) {
                 var size = result["size"];
                 var temp = {};
                 temp["memo"] = size;
-                temp["type"] = keytype;
                 resumm[keytype] = temp;
                 memoTotal += size;
             }));
@@ -174,8 +168,19 @@ if (argv.s) {
             }
             redis.quit();
             console.log(resumm);
+            //printFormat(resumm);
         });
     },function (err) {
         console.log('a u fucking kidding me? ' + err);
     });
+}
+
+
+if (argv.t) {
+    findKeyListWithType(argv.t).then(function(result){
+        console.log(result);
+    });
+}
+if (argv.s) {
+    summary();
 }
