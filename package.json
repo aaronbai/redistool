@@ -10,6 +10,7 @@
   "license": "MIT",
   "dependencies": {
       "ioredis": "2.2.0",
-      "yargs": "4.7.1"
+      "yargs": "4.7.1",
+      "colors": "1.1.2"
   }
 }
