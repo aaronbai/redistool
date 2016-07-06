@@ -1,3 +1,9 @@
+/*
+ * var a ='db';
+ * var dic = {};
+ * dic.a => dic["a"]
+ * dic[a] => dic["db"]
+ */
 var Promise = require('bluebird');
 var Redis = require('ioredis');
 var colors = require('colors');
@@ -55,19 +61,12 @@ function findKeyListWithType(type) {
              'return results;'
     });
 
-    var retData = {};
-    var promise = new Promise(function(resolve, reject) {
-        redis.getkeyslistwithtype(type).then(function(result){
-            retData["type"] = type;
-            retData["keyList"] = result;
-            resolve(retData);
-        }, function(err){
-            printError(err);
-		reject(err);
-        });
+    return redis.getkeyslistwithtype(type).then(function(result) {
+        var retData = {};
+        retData["type"] = type;
+        retData["keyList"] = result;
+        return retData;
     });
-
-    return promise; 
 }
 
 /*
@@ -91,13 +90,8 @@ function typeNumberDist() {
              'return numbers;'
     });
 
-    return new Promise(function(resolve, reject) {
-            redis.keyTypeDistri().then(function(result){
-                resolve(result);
-        }, function(err){
-            printError(err);
-	    reject(err);
-        });
+    return redis.keyTypeDistri().then(function(result) {
+        return result;
     });
 }
 
@@ -105,95 +99,95 @@ function typeMemoDist(type, keys) {
     var memoSize = 0;
     var promises = [];
 
-    return new Promise(function(resolve, reject){
-        keys.forEach(function(key){
-            promises.push(redis.debug('object', key).then(function(result){
-                var size = parseInt(/serializedlength:\d+/.exec(result).toString().replace("serializedlength:", "")); 
-                memoSize += size / 1024; // kb
-            }), function(err) {printError(err);});
-        });
+    function cbKeySize(keyInfo) {
+        var size = parseInt(/serializedlength:\d+/.exec(keyInfo).toString().replace("serializedlength:", "")); 
+        memoSize += size / 1024; // kb
+        return;
+    }
 
-        Promise.all(promises).then(function (){
-            var retData = {};
-            retData["type"] = type;
-            retData["size"] = memoSize;
-            resolve(retData);
-        }, function(err) {
-            printError(err);
-            reject(err);
-        });
-    });
+    function cbAllSize () {
+        var retData = {};
+        retData["type"] = type;
+        retData["size"] = memoSize;
+        return retData;
+    }
+
+    return Promise.all(keys.map(function(key) {
+        return redis.debug('object', key).then(cbKeySize);
+    }))
+    .then(cbAllSize)
+    .catch(printError);
 }
 
-
-
 function summary() {
-    printAttention();
-
     var resumm = {};
     var promises = [];
     var keyTables = {};
     var memoTotal = 0;
     var numberTotal = 0;
-    for (var index in types) {
-        var type = types[index];
-	    resumm[type] = {};
-        promises.push(findKeyListWithType(type).then(function(result){
-            var keytype = result["type"];
-            keyTables[keytype] = result["keyList"];
-        }), function(err) {printError(err);});
+
+    // After Get keyslist with Given Type(eg: set)
+    function cbGetKeylistWithGivenType(result) {
+        var keytype = result["type"];
+        keyTables[keytype] = result["keyList"];
+        return;
     }
 
-    /*
-     * var a ='db';
-     * var dic = {};
-     * dic.a => dic["a"]
-     * dic[a] => dic["db"]
-     */
-    return Promise.all(promises).then(function () {
+    // After Get Memo Info with Given Type
+    function cbMmWithGivenType(result) {
+        var keytype = result["type"];
+        var size = result["size"];
+        var temp = {};
+        temp["memo"] = size;
+        resumm[keytype] = temp;
+        memoTotal += size;
+        return ;
+    }
+
+    // Factory of Promise
+    function factoryOfPromise(promise) {
+        return promise;
+    }
+
+    function cbTypeNumberDist(result) {
+        for (var index in result) {
+            resumm[types[index]]["keysnumber"] = result[index];
+            numberTotal += result[index];
+        }
+        return;
+    }
+
+    // After All keys are grouped by types
+    function cbKeyGroupFinished() {
+        return Promise.all(types.map(function(type) {
+            return typeMemoDist(type, keyTables[type])
+                .then(cbMmWithGivenType);
+        }));
+    }
+
+    // After all async operations, this func will summarize global data.
+    function cbSummary() {
+        resumm["memoTotal"] = memoTotal;
+        resumm["keyNumberTotal"] = numberTotal;
         for (var index in types) {
             var type = types[index];
-            promises.push(typeMemoDist(type, keyTables[type]).then(function (result){
-                var keytype = result["type"];
-                var size = result["size"];
-                var temp = {};
-                temp["memo"] = size;
-                resumm[keytype] = temp;
-                memoTotal += size;
-            }, function(err) {
-                printError(err);
-            }));
+            var percentage = resumm[type]["memo"] / memoTotal;
+            resumm[type]["mmPercent"] = percentage; 
+            percentage = resumm[type]["keysnumber"] / numberTotal;
+            resumm[type]["nmPercent"] = percentage;
         }
+        return resumm;
+    }
 
-        promises.push(typeNumberDist().then(function (result){
-		console.log(result);
-            for (var index in result) {
-		console.log(types[index]);
-		console.log(resumm[types[index]]);
-                resumm[types[index]]["keysnumber"] = result[index];
-                numberTotal += result[index];
-            }
-        }, function(err){
-            printError(err);
-        }));
-
-        Promise.all(promises).then(function () {
-            resumm["memoTotal"] = memoTotal;
-            resumm["keyNumberTotal"] = numberTotal;
-            for (var index in types) {
-                var type = types[index];
-                var percentage = resumm[type]["memo"] / memoTotal;
-                resumm[type]["mmPercent"] = percentage; 
-                percentage = resumm[type]["keysnumber"] / numberTotal;
-                resumm[type]["nmPercent"] = percentage;
-            }
-            printResult(resumm);
-        }, function (err) {
-            printError(err);
-        });
-    },function (err) {
-        console.log('a u fucking kidding me? ' + err);
-    });
+    return Promise.all(types.map(function(type){
+        resumm[type] = {};
+        return findKeyListWithType(type).then(cbGetKeylistWithGivenType);
+    }))
+    .then(cbKeyGroupFinished)
+    .then(factoryOfPromise(typeNumberDist))
+    .then(cbTypeNumberDist)
+    .then(cbSummary)
+    .catch(printError);
 }
 
 //control output stream
@@ -201,10 +195,13 @@ function printAttention() {
     console.log("[Attention]".yellow);
     console.log("The memo in result is NOT the memory used. It's based on 'DEBUG OBJECT' result's serializedlength which means length in rdb file");
 }
+
 function printResult(resumm) {
+    printAttention();
+
     console.log("==========================================================================================");
     console.log("[Result]".green);
-    console.log("Keys: " + resumm.keyNumberTotal);
+    console.log("Keys: " + resumm["keyNumberTotal"]);
     console.log("Memories in rdb file(Kb): " + resumm.memoTotal);
     console.log("type\tmemo in rdb(Kb)\tkeysNumber\tmemoryPercent(%)\tnumberPercent(%)");
 
@@ -213,25 +210,26 @@ function printResult(resumm) {
         console.log(types[index] + "\t" + data.memo + "\t" + data.keysnumber + "\t" + data.mmPercent*100 + "\t" + data.nmPercent*100);
     }
 }
+
 function printError(err) {
     console.log(("[ERROR] " + err.toString()).magenta);
 }
 
+function fini() {
+    return redis.quit();
+}
+
 // Main Script
 if (argv.t) {
-    findKeyListWithType(argv.t).then(function(result){
-        console.log(result);
-        redis.quit();
-    }, function(err) {
-        printError(err);
-        reqis.quit();
-    });
+    findKeyListWithType(argv.t)
+        .then(console.log)
+        .then(fini)
+        .catch(printError);
 }
+
 if (argv.s) {
-    summary().then(function(result) {
-        redis.quit();
-    }, function(err) {
-        printError(err);
-        redis.quit();
-    });
+    summary()
+        .then(printResult)
+        .then(fini)
+        .catch(printError);
 }
