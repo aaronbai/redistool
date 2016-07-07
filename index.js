@@ -90,9 +90,7 @@ function typeNumberDist() {
              'return numbers;'
     });
 
-    return redis.keyTypeDistri().then(function(result) {
-        return result;
-    });
+    return redis.keyTypeDistri();
 }
 
 function typeMemoDist(type, keys) {
@@ -203,7 +201,7 @@ function printResult(resumm) {
     console.log("[Result]".green);
     console.log("Keys: " + resumm["keyNumberTotal"]);
     console.log("Memories in rdb file(Kb): " + resumm.memoTotal);
-    console.log("type\tmemo in rdb(Kb)\tkeysNumber\tmemoryPercent(%)\tnumberPercent(%)");
+    console.log("type\tmemoInRrdb(Kb)\tkeysNumber\tmemoryPercent(%)\tnumberPercent(%)");
 
     for (var index in types) {
         var data = resumm[types[index]];
